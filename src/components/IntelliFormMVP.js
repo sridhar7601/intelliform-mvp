@@ -286,37 +286,193 @@ You can download or preview your form using the buttons below.`, {
     setIsProcessing(false);
   };
 
-  const processAction = (action) => {
-    switch (action.type) {
-      case 'start_form':
-        addSystemLog(`📋 Form Started`, `${action.formType}: ${action.nextQuestion}`);
-        setTimeout(() => {
-          addMessage('bot', action.nextQuestion);
-        }, 500);
-        break;
-        
-      case 'ask_next_question':
-        addSystemLog(`❓ Next Question`, `Field type: ${action.fieldType}`);
-        
-        let questionText = action.question;
-        if (action.options && action.options.length > 0) {
-          questionText += '\n\nOptions:\n' + action.options.map((opt, idx) => `${idx + 1}. ${opt}`).join('\n');
-        }
-        
-        addMessage('bot', questionText, {
-          fieldType: action.fieldType,
-          options: action.options
-        });
-        break;
-        
-      case 'form_complete':
-        addSystemLog(`✅ Form Complete`, `Collected ${Object.keys(action.formData).length} fields`);
-        setCollectedData(action.formData);
-        
-        setTimeout(() => {
-          addMessage('bot', `🎉 **Form Completed Successfully!**
+ // Replace your existing processAction function with this enhanced version
+// that handles ANY government form dynamically
 
-I have collected all the required information for your ${governmentForms[action.formType]?.name} application.
+const processAction = (action) => {
+  switch (action.type) {
+    // NEW: Universal form start action
+    case 'start_universal_form':
+      addSystemLog(`📋 Universal Form Started`, `${action.formType}: ${action.formDetails.name}`);
+      
+      // Store form details in state
+      setFormContext({
+        type: action.formType,
+        details: action.formDetails,
+        isUniversal: true // Flag to indicate this is a dynamically discovered form
+      });
+      
+      setTimeout(() => {
+        addMessage('bot', `📋 **${action.formDetails.name} Application Started**
+
+**Authority:** ${action.formDetails.authority}
+**Form Number:** ${action.formDetails.form_number}
+**Total Fields:** ${action.formDetails.total_fields}
+**Processing Time:** ${action.formDetails.processing_time}
+**Fees:** ${action.formDetails.fees}
+
+**Required Documents:**
+${action.formDetails.documents_needed.map(doc => `• ${doc}`).join('\n')}
+
+Let's start collecting the required information:
+
+${action.nextQuestion}`, {
+          formStarted: true,
+          formType: action.formType,
+          universalForm: true
+        });
+      }, 500);
+      break;
+
+    // NEW: Universal question asking action
+    case 'ask_universal_question':
+      addSystemLog(`❓ Universal Question`, `Field: ${action.fieldName} (${action.fieldNumber}/${action.totalFields})`);
+      
+      // Create a more informative question with progress
+      const progressText = `**Progress: ${action.fieldNumber}/${action.totalFields}** 📊
+
+${action.question}`;
+      
+      setTimeout(() => {
+        addMessage('bot', progressText, {
+          fieldType: action.fieldName,
+          fieldNumber: action.fieldNumber,
+          totalFields: action.totalFields,
+          universalForm: true
+        });
+      }, 500);
+      break;
+
+    // NEW: Universal form completion action
+    case 'universal_form_complete':
+      addSystemLog(`✅ Universal Form Complete`, `${action.formDetails.name} - ${Object.keys(action.formData).length} fields collected`);
+      setCollectedData(action.formData);
+      
+      setTimeout(() => {
+        addMessage('bot', `🎉 **${action.formDetails.name} Application Completed!**
+
+I have successfully collected all the required information for your application.
+
+**Summary of Information Collected:**
+${Object.entries(action.formData).map(([key, value]) => 
+  `• **${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:** ${value}`
+).join('\n')}
+
+**Next Steps:**
+1. **Generate Professional PDF** - Click the button below to create a government-ready form
+2. **Review Information** - The PDF will include all your details in official format
+3. **Print & Submit** - Take the PDF to ${action.formDetails.authority}
+
+**Required Documents to Carry:**
+${action.formDetails.documents_needed.map(doc => `• ${doc}`).join('\n')}
+
+**Processing Information:**
+• **Fees:** ${action.formDetails.fees}
+• **Processing Time:** ${action.formDetails.processing_time}
+• **Form Number:** ${action.formDetails.form_number}
+
+Would you like me to generate the professional PDF now?`, {
+          formComplete: true,
+          formType: action.formType,
+          canGeneratePDF: true,
+          universalForm: true,
+          formDetails: action.formDetails
+        });
+      }, 1000);
+      break;
+
+    // Enhanced validation error handling
+    case 'validation_error':
+      addSystemLog(`⚠️ Validation Error`, action.message);
+      
+      setTimeout(() => {
+        addMessage('bot', `⚠️ **Input Validation Issue**
+
+${action.message}
+
+${action.retry_question || 'Please provide the correct information.'}`, {
+          validationError: true,
+          retryRequired: true
+        });
+      }, 500);
+      break;
+
+    // Enhanced clarification handling
+    case 'clarification_needed':
+      addSystemLog(`❓ Clarification Required`, action.message);
+      
+      setTimeout(() => {
+        addMessage('bot', `❓ **Need More Information**
+
+${action.message}
+
+**I can help you with popular government forms like:**
+• FSSAI Food License
+• GST Registration  
+• Company Registration
+• Trademark Registration
+• PAN Card Application
+• Passport Application
+• Driving License
+• And many more!
+
+Just tell me which specific form or certificate you need.`, {
+          clarificationNeeded: true,
+          needsFormSpecification: true
+        });
+      }, 500);
+      break;
+
+    // LEGACY: Keep existing form start for backwards compatibility
+    case 'start_form':
+      addSystemLog(`📋 Legacy Form Started`, `${action.formType}: ${action.nextQuestion}`);
+      
+      // Check if this is a known legacy form
+      const legacyForm = governmentForms[action.formType];
+      if (legacyForm) {
+        setFormContext({
+          type: action.formType,
+          details: legacyForm,
+          isUniversal: false
+        });
+      }
+      
+      setTimeout(() => {
+        addMessage('bot', action.nextQuestion, {
+          formStarted: true,
+          formType: action.formType,
+          legacyForm: true
+        });
+      }, 500);
+      break;
+        
+    // LEGACY: Keep existing question asking for backwards compatibility
+    case 'ask_next_question':
+      addSystemLog(`❓ Legacy Question`, `Field type: ${action.fieldType}`);
+      
+      let questionText = action.question;
+      if (action.options && action.options.length > 0) {
+        questionText += '\n\nOptions:\n' + action.options.map((opt, idx) => `${idx + 1}. ${opt}`).join('\n');
+      }
+      
+      addMessage('bot', questionText, {
+        fieldType: action.fieldType,
+        options: action.options,
+        legacyForm: true
+      });
+      break;
+        
+    // LEGACY: Keep existing form complete for backwards compatibility  
+    case 'form_complete':
+      addSystemLog(`✅ Legacy Form Complete`, `Collected ${Object.keys(action.formData).length} fields`);
+      setCollectedData(action.formData);
+      
+      const legacyFormDetails = governmentForms[action.formType];
+      
+      setTimeout(() => {
+        addMessage('bot', `🎉 **Form Completed Successfully!**
+
+I have collected all the required information for your ${legacyFormDetails?.name} application.
 
 **Next Steps:**
 1. **Generate Professional PDF** - Click the button below to create a properly formatted government form
@@ -324,17 +480,30 @@ I have collected all the required information for your ${governmentForms[action.
 3. **Download & Submit** - Take the PDF to the respective government office
 
 Would you like me to generate the professional PDF form now?`, {
-            formComplete: true,
-            formType: action.formType,
-            canGeneratePDF: true
+          formComplete: true,
+          formType: action.formType,
+          canGeneratePDF: true,
+          legacyForm: true
+        });
+      }, 1000);
+      break;
+
+    // Handle unknown actions gracefully
+    default:
+      console.log('Unknown action type:', action.type, action);
+      addSystemLog(`❓ Unknown Action`, `Type: ${action.type}`);
+      
+      // Try to handle it as a generic message
+      if (action.message) {
+        setTimeout(() => {
+          addMessage('bot', action.message, {
+            unknownAction: true,
+            actionType: action.type
           });
-        }, 1000);
-        break;
-        
-      default:
-        console.log('Unknown action:', action);
-    }
-  };
+        }, 500);
+      }
+  }
+};
 
   const resetSession = () => {
     setMessages([]);
