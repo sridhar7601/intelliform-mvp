@@ -1,70 +1,109 @@
-# Getting Started with Create React App
+# IntelliForm Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+IntelliForm AI Frontend - A React-based UI for interacting with the IntelliForm AI backend to complete government forms and generate PDFs.
 
-## Available Scripts
+## Overview
 
-In the project directory, you can run:
+This frontend application provides a user-friendly interface for the IntelliForm AI system, which helps users complete government forms through an AI-assisted conversation and generates professional PDF documents ready for submission.
 
-### `npm start`
+## Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+- Interactive chat interface for AI-assisted form completion
+- Real-time form progress tracking
+- PDF generation and preview capabilities
+- File management for generated documents
+- System status monitoring and logs
+- Responsive design with Tailwind CSS
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Prerequisites
 
-### `npm test`
+- Node.js (v14 or higher)
+- npm (v6 or higher)
+- IntelliForm Backend running (see backend README)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Installation
 
-### `npm run build`
+1. Clone the repository
+2. Navigate to the frontend directory:
+   ```
+   cd intelliform-mvp
+   ```
+3. Install dependencies:
+   ```
+   npm install
+   ```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Running the Application
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Development Mode
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```
+npm start
+```
 
-### `npm run eject`
+This will start the development server at http://localhost:3000.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Production Build
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```
+npm run build
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+This will create an optimized production build in the `build` directory.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Configuration
 
-## Learn More
+The frontend is configured to connect to the backend at `http://localhost:3001` by default. If you need to change this, update the API endpoint URLs in the `IntelliFormMVP.js` component.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Project Structure
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+- `src/` - Source code directory
+  - `components/` - React components
+    - `IntelliFormMVP.js` - Main application component
+  - `App.js` - Root application component
+  - `index.js` - Application entry point
 
-### Code Splitting
+## Using the Application
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+1. Start the backend server (see backend README)
+2. Start the frontend development server
+3. Open http://localhost:3000 in your browser
+4. Begin a conversation with the AI assistant by typing in the chat input
+5. Follow the AI's guidance to complete your chosen government form
+6. Once the form is complete, generate a professional PDF
+7. Download or preview the generated PDF
 
-### Analyzing the Bundle Size
+## Supported Government Forms
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+The application supports various Indian government forms including:
+- PAN Card Application
+- Driving License Application
+- Passport Application
+- And many more through dynamic form discovery
 
-### Making a Progressive Web App
+## User Interface
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+The UI consists of several key sections:
 
-### Advanced Configuration
+1. **Chat Interface** - The main area where you interact with the AI assistant
+2. **System Status** - Shows the current state of the backend connection and session
+3. **Generated Files** - Lists all PDFs generated during the current session
+4. **Session Info** - Displays information about the current form completion progress
+5. **Available Forms** - Shows the forms that are explicitly supported
+6. **System Logs** - Provides technical information about system operations
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## Troubleshooting
 
-### Deployment
+If you encounter issues:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+1. Ensure the backend server is running
+2. Check the System Logs section for error messages
+3. Use the "Test Connection" button to verify backend connectivity
+4. If the backend is disconnected, check your backend server logs
 
-### `npm run build` fails to minify
+## Development
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app) and uses:
+- React 19
+- Tailwind CSS for styling
+- Lucide React for icons
