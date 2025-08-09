@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MessageCircle, Bot, User, FileText, Download, Settings, Zap, Database, CheckCircle, Server, Clock, Users, File, Eye, Trash2 } from 'lucide-react';
+import { MessageCircle, Bot, User, FileText, Download, Settings, Zap, Database, CheckCircle, Server, Clock, Users, File, Eye, Trash2, Shield, Verified } from 'lucide-react';
 
-const IntelliFormMVP = () => {
+const LangChainIntelliForm = () => {
   const [messages, setMessages] = useState([]);
   const [currentInput, setCurrentInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -14,53 +14,26 @@ const IntelliFormMVP = () => {
   const [sessionInfo, setSessionInfo] = useState(null);
   const [generatedFiles, setGeneratedFiles] = useState([]);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [verifiedForms, setVerifiedForms] = useState([]);
 
-  // Government Forms Knowledge Base
-  const governmentForms = {
-    "pan_card": {
-      name: "Permanent Account Number (PAN)",
-      authority: "Income Tax Department",
-      form_number: "Form 49A",
-      fields: ["title", "full_name", "father_name", "dob", "gender", "address", "mobile", "email"],
-      documents: ["Identity Proof", "Address Proof", "Date of Birth Proof"],
-      fee: "₹110 (Indian address), ₹1020 (Foreign address)",
-      processing_time: "15-20 working days",
-      eligibility: "Any Indian citizen or entity"
-    },
-    "driving_license": {
-      name: "Driving License",
-      authority: "Regional Transport Office (RTO)",
-      form_number: "Form 2 (Learner's), Form 4 (Permanent)",
-      fields: ["license_type", "vehicle_class", "full_name", "father_name", "dob", "address", "mobile", "blood_group"],
-      documents: ["Age Proof", "Address Proof", "Passport Size Photos", "Medical Certificate"],
-      fee: "₹200 (Learner's), ₹500 (Permanent)",
-      processing_time: "7-15 days",
-      eligibility: "18+ years for car, 16+ for motorcycle"
-    },
-    "passport": {
-      name: "Indian Passport",
-      authority: "Ministry of External Affairs",
-      form_number: "Online Application",
-      fields: ["passport_type", "booklet_type", "full_name", "father_name", "mother_name", "dob", "place_of_birth", "address"],
-      documents: ["Birth Certificate", "Address Proof", "Identity Proof"],
-      fee: "₹1500 (36 pages), ₹2000 (60 pages)",
-      processing_time: "30-45 days",
-      eligibility: "Indian citizen"
-    }
-  };
+  // 🔥 NEW: LangChain-specific state
+  const [isVerifiedForm, setIsVerifiedForm] = useState(false);
+  const [confidence, setConfidence] = useState(null);
+  const [validationErrors, setValidationErrors] = useState([]);
+  const [conversationMemory, setConversationMemory] = useState('');
 
   const states = {
-    'INIT': 'Understanding your requirement',
+    'INIT': 'Ready to help',
+    'FORM_DISCOVERY': 'Finding your form',
     'COLLECTING': 'Collecting information',
     'COMPLETE': 'Form completed',
-    'REVIEW': 'Reviewing details',
-    'GENERATE': 'Generating form'
+    'REVIEW': 'Reviewing details'
   };
 
-  // Enhanced Backend API with Session Management
-  const callBackendAPI = async (prompt, includeSessionId = true) => {
+  // 🌐 Enhanced Backend API for LangChain
+  const callLangChainAPI = async (prompt, includeSessionId = true) => {
     try {
-      addSystemLog(`🌐 Backend API Call`, `Session: ${sessionId || 'new'}, Message: "${prompt.substring(0, 50)}..."`);
+      addSystemLog(`🦜 LangChain API Call`, `Session: ${sessionId || 'new'}, Message: "${prompt.substring(0, 50)}..."`);
       
       const requestBody = {
         message: prompt
@@ -85,56 +58,63 @@ const IntelliFormMVP = () => {
       const data = await response.json();
       
       if (!data.success) {
-        throw new Error(data.error || 'Backend API error');
+        throw new Error(data.error || 'LangChain API error');
       }
 
-      // Update session info
+      // 🔥 NEW: Update LangChain-specific state
       if (data.sessionId && data.sessionId !== sessionId) {
         setSessionId(data.sessionId);
-        addSystemLog(`🆔 Session Created`, `New session: ${data.sessionId}`);
+        addSystemLog(`🆔 Session Created`, `LangChain session: ${data.sessionId}`);
       }
       
       if (data.sessionState) {
         setSessionInfo(data.sessionState);
         setSessionState(data.sessionState.state);
+        setIsVerifiedForm(data.sessionState.verified || false);
         
         if (data.sessionState.currentForm) {
           setFormContext({
             type: data.sessionState.currentForm,
-            details: governmentForms[data.sessionState.currentForm]
+            details: data.response.formDetails,
+            verified: data.sessionState.verified,
+            isLangChain: true
           });
         }
       }
 
-      addSystemLog(`✅ Backend Response`, `Intent: ${data.response.intent}, Actions: ${data.actions?.length || 0}`);
+      // Track confidence levels
+      if (data.response.confidence !== undefined) {
+        setConfidence(data.response.confidence);
+      }
+
+      addSystemLog(`✅ LangChain Response`, `Intent: ${data.response.intent}, Verified: ${data.sessionState?.verified || false}`);
       
       return data;
 
     } catch (error) {
-      addSystemLog(`❌ Backend Error`, error.message);
+      addSystemLog(`❌ LangChain Error`, error.message);
       setBackendConnected(false);
       
       return {
         success: false,
         response: {
-          intent: 'clarification_needed',
-          message: "I'm having trouble connecting to the backend. Please try again.",
+          intent: 'error',
+          message: "I'm having trouble connecting to the LangChain backend. Please try again.",
           confidence: 0.1
-        },
-        actions: []
+        }
       };
     }
   };
 
-  // NEW: Generate PDF function
-  const generatePDF = async () => {
+  // 📄 Generate PDF with verified data
+  const generateVerifiedPDF = async () => {
     if (!sessionId || sessionState !== 'COMPLETE') {
       addSystemLog(`❌ PDF Error`, 'Session not ready for PDF generation');
       return;
     }
 
     setIsGeneratingPDF(true);
-    addSystemLog(`📄 PDF Generation`, `Starting PDF generation for ${formContext?.type}`);
+    addSystemLog(`📄 Verified PDF Generation`, `Starting PDF generation for verified form: ${formContext?.type}`);
 
     try {
       const response = await fetch('http://localhost:3001/api/generate-pdf', {
@@ -153,30 +133,34 @@ const IntelliFormMVP = () => {
       const data = await response.json();
       
       if (data.success) {
-        addSystemLog(`✅ PDF Generated`, `File: ${data.filename}`);
+        addSystemLog(`✅ Verified PDF Generated`, `File: ${data.filename}`);
         
-        // Add generated file to list
         setGeneratedFiles(prev => [...prev, {
           filename: data.filename,
           downloadUrl: `http://localhost:3001${data.downloadUrl}`,
-          formType: data.formType,
+          formType: formContext?.type,
           formName: data.formName,
-          generatedAt: data.generatedAt
+          generatedAt: new Date().toISOString(),
+          verified: data.verified
         }]);
 
-        addMessage('bot', `📄 **Professional PDF Generated!**
+        addMessage('bot', `📄 **✅ Verified Government PDF Generated!**
 
-Your ${data.formName} application has been generated as a professional PDF document with official formatting.
+Your ${data.formName} application has been generated using **VERIFIED government data** and requirements.
 
 **File Details:**
-• Filename: ${data.filename}
-• Form Type: ${data.formName}
-• Generated: ${new Date(data.generatedAt).toLocaleString()}
+• **Filename:** ${data.filename}
+• **Form Type:** ${data.formName}
+• **Data Source:** ✅ Verified Government Requirements
+• **Generated:** ${new Date().toLocaleString()}
+
+🛡️ **This PDF is generated from our verified government forms database, ensuring accuracy and compliance with official requirements.**
 
 You can download or preview your form using the buttons below.`, {
           pdfGenerated: true,
           filename: data.filename,
-          downloadUrl: data.downloadUrl
+          downloadUrl: data.downloadUrl,
+          verified: true
         });
 
       } else {
@@ -191,32 +175,20 @@ You can download or preview your form using the buttons below.`, {
     }
   };
 
-  // NEW: Download file function
-  const downloadFile = (filename, downloadUrl) => {
-    addSystemLog(`💾 Download`, `Downloading: ${filename}`);
-    window.open(downloadUrl, '_blank');
-  };
-
-  // NEW: Preview file function
-  const previewFile = (filename) => {
-    addSystemLog(`👁️ Preview`, `Previewing: ${filename}`);
-    const previewUrl = `http://localhost:3001/api/preview/${filename}`;
-    window.open(previewUrl, '_blank');
-  };
-
-  // Check backend health
-  const checkBackendHealth = async () => {
+  // Check LangChain backend health
+  const checkLangChainHealth = async () => {
     try {
       const response = await fetch('http://localhost:3001/api/health');
       if (response.ok) {
         const data = await response.json();
         setBackendConnected(true);
-        addSystemLog(`✅ Backend Health`, `V3.0 running, ${data.sessions} sessions, PDF enabled`);
+        setVerifiedForms(data.verified_forms || []);
+        addSystemLog(`✅ LangChain Health`, `V4.0 running, ${data.sessions} sessions, ${data.verified_forms?.length} verified forms`);
         return true;
       }
     } catch (error) {
       setBackendConnected(false);
-      addSystemLog(`❌ Backend Health`, 'Backend server not reachable');
+      addSystemLog(`❌ LangChain Health`, 'LangChain server not reachable');
       return false;
     }
   };
@@ -241,18 +213,20 @@ You can download or preview your form using the buttons below.`, {
     setMessages(prev => [...prev, message]);
   };
 
+  // 🔥 Enhanced message processing for LangChain responses
   const processUserInput = async () => {
     if (!currentInput.trim()) return;
     
     const userMessage = currentInput.trim();
     setCurrentInput('');
     setIsProcessing(true);
+    setValidationErrors([]);
     
     addMessage('user', userMessage);
     addSystemLog(`👤 User Input`, userMessage);
     
     try {
-      const result = await callBackendAPI(userMessage);
+      const result = await callLangChainAPI(userMessage);
       
       if (!result.success) {
         addMessage('bot', result.response.message);
@@ -260,23 +234,12 @@ You can download or preview your form using the buttons below.`, {
         return;
       }
       
-      const { response, actions } = result;
+      const { response } = result;
       
-      addSystemLog(`🧠 AI Response`, `Intent: ${response.intent}, Form: ${response.form_type || 'none'}`);
+      addSystemLog(`🧠 LangChain Response`, `Intent: ${response.intent}, Confidence: ${response.confidence || 'N/A'}`);
       
-      addMessage('bot', response.message, {
-        intent: response.intent,
-        form_type: response.form_type,
-        confidence: response.confidence
-      });
-      
-      if (actions && actions.length > 0) {
-        for (const action of actions) {
-          setTimeout(() => {
-            processAction(action);
-          }, 1000);
-        }
-      }
+      // Process different LangChain response types
+      processLangChainResponse(response);
       
     } catch (error) {
       addSystemLog(`❌ Error`, error.message);
@@ -286,224 +249,100 @@ You can download or preview your form using the buttons below.`, {
     setIsProcessing(false);
   };
 
- // Replace your existing processAction function with this enhanced version
-// that handles ANY government form dynamically
-
-const processAction = (action) => {
-  switch (action.type) {
-    // NEW: Universal form start action
-    case 'start_universal_form':
-      addSystemLog(`📋 Universal Form Started`, `${action.formType}: ${action.formDetails.name}`);
-      
-      // Store form details in state
-      setFormContext({
-        type: action.formType,
-        details: action.formDetails,
-        isUniversal: true // Flag to indicate this is a dynamically discovered form
-      });
-      
-      setTimeout(() => {
-        addMessage('bot', `📋 **${action.formDetails.name} Application Started**
-
-**Authority:** ${action.formDetails.authority}
-**Form Number:** ${action.formDetails.form_number}
-**Total Fields:** ${action.formDetails.total_fields}
-**Processing Time:** ${action.formDetails.processing_time}
-**Fees:** ${action.formDetails.fees}
-
-**Required Documents:**
-${action.formDetails.documents_needed.map(doc => `• ${doc}`).join('\n')}
-
-Let's start collecting the required information:
-
-${action.nextQuestion}`, {
-          formStarted: true,
-          formType: action.formType,
-          universalForm: true
+  // 🔥 NEW: Process LangChain-specific responses
+  const processLangChainResponse = (response) => {
+    switch (response.intent) {
+      case 'form_discovered':
+        addSystemLog(`📋 Verified Form Discovered`, `${response.formDetails.name}`);
+        setCollectedData({});
+        
+        addMessage('bot', response.message, {
+          formDiscovered: true,
+          formDetails: response.formDetails,
+          verified: true,
+          confidence: response.confidence
         });
-      }, 500);
-      break;
+        break;
 
-    // NEW: Universal question asking action
-    case 'ask_universal_question':
-      addSystemLog(`❓ Universal Question`, `Field: ${action.fieldName} (${action.fieldNumber}/${action.totalFields})`);
-      
-      // Create a more informative question with progress
-      const progressText = `**Progress: ${action.fieldNumber}/${action.totalFields}** 📊
-
-${action.question}`;
-      
-      setTimeout(() => {
-        addMessage('bot', progressText, {
-          fieldType: action.fieldName,
-          fieldNumber: action.fieldNumber,
-          totalFields: action.totalFields,
-          universalForm: true
+      case 'next_question':
+        addSystemLog(`❓ Next Question`, `Progress: ${response.progress}`);
+        
+        addMessage('bot', response.message, {
+          nextQuestion: true,
+          progress: response.progress,
+          verified: isVerifiedForm
         });
-      }, 500);
-      break;
+        break;
 
-    // NEW: Universal form completion action
-    case 'universal_form_complete':
-      addSystemLog(`✅ Universal Form Complete`, `${action.formDetails.name} - ${Object.keys(action.formData).length} fields collected`);
-      setCollectedData(action.formData);
-      
-      setTimeout(() => {
-        addMessage('bot', `🎉 **${action.formDetails.name} Application Completed!**
+      case 'form_complete':
+        addSystemLog(`✅ Verified Form Complete`, `All fields validated`);
+        setCollectedData(response.formData);
+        
+        setTimeout(() => {
+          addMessage('bot', `${response.message}
 
-I have successfully collected all the required information for your application.
-
-**Summary of Information Collected:**
-${Object.entries(action.formData).map(([key, value]) => 
-  `• **${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:** ${value}`
-).join('\n')}
+**✅ All information has been validated using verified government requirements.**
 
 **Next Steps:**
-1. **Generate Professional PDF** - Click the button below to create a government-ready form
-2. **Review Information** - The PDF will include all your details in official format
-3. **Print & Submit** - Take the PDF to ${action.formDetails.authority}
+1. **Generate Verified PDF** - Click the button below to create a government-compliant form
+2. **All data validated** - Your information meets official requirements  
+3. **Ready for submission** - PDF will be formatted according to government standards
 
-**Required Documents to Carry:**
-${action.formDetails.documents_needed.map(doc => `• ${doc}`).join('\n')}
+Would you like me to generate the verified PDF now?`, {
+            formComplete: true,
+            canGeneratePDF: true,
+            verified: true,
+            formDetails: response.formDetails
+          });
+        }, 1000);
+        break;
 
-**Processing Information:**
-• **Fees:** ${action.formDetails.fees}
-• **Processing Time:** ${action.formDetails.processing_time}
-• **Form Number:** ${action.formDetails.form_number}
-
-Would you like me to generate the professional PDF now?`, {
-          formComplete: true,
-          formType: action.formType,
-          canGeneratePDF: true,
-          universalForm: true,
-          formDetails: action.formDetails
-        });
-      }, 1000);
-      break;
-
-    // Enhanced validation error handling
-    case 'validation_error':
-      addSystemLog(`⚠️ Validation Error`, action.message);
-      
-      setTimeout(() => {
+      case 'validation_error':
+        addSystemLog(`⚠️ Validation Error`, response.message);
+        setValidationErrors(prev => [...prev, response.message]);
+        
         addMessage('bot', `⚠️ **Input Validation Issue**
 
-${action.message}
+${response.message}
 
-${action.retry_question || 'Please provide the correct information.'}`, {
+${response.retryQuestion ? `Please try again:\n\n${response.retryQuestion}` : 'Please provide the correct information.'}`, {
           validationError: true,
           retryRequired: true
         });
-      }, 500);
-      break;
+        break;
 
-    // Enhanced clarification handling
-    case 'clarification_needed':
-      addSystemLog(`❓ Clarification Required`, action.message);
-      
-      setTimeout(() => {
+      case 'clarification_needed':
+        addSystemLog(`❓ Clarification Required`, response.message);
+        
         addMessage('bot', `❓ **Need More Information**
 
-${action.message}
+${response.message}
 
-**I can help you with popular government forms like:**
-• FSSAI Food License
-• GST Registration  
-• Company Registration
-• Trademark Registration
-• PAN Card Application
-• Passport Application
-• Driving License
-• And many more!
+**✅ I can help you with these VERIFIED government forms:**
+${verifiedForms.map(form => `• ${form.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`).join('\n')}
 
-Just tell me which specific form or certificate you need.`, {
+These forms use verified government data to ensure accuracy and compliance.`, {
           clarificationNeeded: true,
-          needsFormSpecification: true
+          verifiedForms: verifiedForms
         });
-      }, 500);
-      break;
+        break;
 
-    // LEGACY: Keep existing form start for backwards compatibility
-    case 'start_form':
-      addSystemLog(`📋 Legacy Form Started`, `${action.formType}: ${action.nextQuestion}`);
-      
-      // Check if this is a known legacy form
-      const legacyForm = governmentForms[action.formType];
-      if (legacyForm) {
-        setFormContext({
-          type: action.formType,
-          details: legacyForm,
-          isUniversal: false
+      case 'error':
+        addSystemLog(`❌ LangChain Error`, response.message);
+        addMessage('bot', `❌ **System Error**
+
+${response.message}
+
+Please try rephrasing your request or contact support if the issue persists.`);
+        break;
+
+      default:
+        addMessage('bot', response.message, {
+          intent: response.intent,
+          confidence: response.confidence
         });
-      }
-      
-      setTimeout(() => {
-        addMessage('bot', action.nextQuestion, {
-          formStarted: true,
-          formType: action.formType,
-          legacyForm: true
-        });
-      }, 500);
-      break;
-        
-    // LEGACY: Keep existing question asking for backwards compatibility
-    case 'ask_next_question':
-      addSystemLog(`❓ Legacy Question`, `Field type: ${action.fieldType}`);
-      
-      let questionText = action.question;
-      if (action.options && action.options.length > 0) {
-        questionText += '\n\nOptions:\n' + action.options.map((opt, idx) => `${idx + 1}. ${opt}`).join('\n');
-      }
-      
-      addMessage('bot', questionText, {
-        fieldType: action.fieldType,
-        options: action.options,
-        legacyForm: true
-      });
-      break;
-        
-    // LEGACY: Keep existing form complete for backwards compatibility  
-    case 'form_complete':
-      addSystemLog(`✅ Legacy Form Complete`, `Collected ${Object.keys(action.formData).length} fields`);
-      setCollectedData(action.formData);
-      
-      const legacyFormDetails = governmentForms[action.formType];
-      
-      setTimeout(() => {
-        addMessage('bot', `🎉 **Form Completed Successfully!**
-
-I have collected all the required information for your ${legacyFormDetails?.name} application.
-
-**Next Steps:**
-1. **Generate Professional PDF** - Click the button below to create a properly formatted government form
-2. **Review Information** - Preview your form before submitting
-3. **Download & Submit** - Take the PDF to the respective government office
-
-Would you like me to generate the professional PDF form now?`, {
-          formComplete: true,
-          formType: action.formType,
-          canGeneratePDF: true,
-          legacyForm: true
-        });
-      }, 1000);
-      break;
-
-    // Handle unknown actions gracefully
-    default:
-      console.log('Unknown action type:', action.type, action);
-      addSystemLog(`❓ Unknown Action`, `Type: ${action.type}`);
-      
-      // Try to handle it as a generic message
-      if (action.message) {
-        setTimeout(() => {
-          addMessage('bot', action.message, {
-            unknownAction: true,
-            actionType: action.type
-          });
-        }, 500);
-      }
-  }
-};
+    }
+  };
 
   const resetSession = () => {
     setMessages([]);
@@ -514,60 +353,103 @@ Would you like me to generate the professional PDF form now?`, {
     setSessionId(null);
     setSessionInfo(null);
     setGeneratedFiles([]);
+    setIsVerifiedForm(false);
+    setConfidence(null);
+    setValidationErrors([]);
     
-    addMessage('bot', 'Hello! I\'m IntelliForm AI V3.0, your advanced government form assistant with PDF generation capabilities. I can help you complete any government form and generate professional PDF documents ready for submission. What do you need help with today?');
+    addMessage('bot', `🦜 **Hello! I'm IntelliForm AI V4.0 powered by LangChain**
+
+I use **VERIFIED government form data** to ensure accuracy and compliance. I can help you with:
+
+**✅ Verified Government Forms:**
+${verifiedForms.map(form => `• ${form.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`).join('\n')}
+
+**🛡️ Key Features:**
+• Verified government requirements
+• Strict field validation  
+• Conversation memory
+• Professional PDF generation
+
+What government form do you need help with today?`);
     
-    addSystemLog(`🔄 Session Reset`, 'New conversation started');
+    addSystemLog(`🔄 Session Reset`, 'New LangChain conversation started');
   };
 
-  const testBackendConnection = async () => {
-    addSystemLog(`🧪 Testing Backend`, `Attempting V3.0 connection...`);
-    const isConnected = await checkBackendHealth();
+  const testLangChainConnection = async () => {
+    addSystemLog(`🧪 Testing LangChain`, `Attempting V4.0 connection...`);
+    const isConnected = await checkLangChainHealth();
     
     if (isConnected) {
       try {
-        const testResponse = await callBackendAPI("Test V3.0 connection", false);
-        addSystemLog(`✅ Test Success`, `V3.0 backend with PDF generation ready!`);
+        const testResponse = await callLangChainAPI("Test LangChain V4.0 connection", false);
+        addSystemLog(`✅ Test Success`, `LangChain V4.0 with verified forms ready!`);
       } catch (error) {
         addSystemLog(`❌ Test Failed`, error.message);
       }
     }
   };
 
+  // Download and preview functions (same as before)
+  const downloadFile = (filename, downloadUrl) => {
+    addSystemLog(`💾 Download`, `Downloading: ${filename}`);
+    window.open(downloadUrl, '_blank');
+  };
+
+  const previewFile = (filename) => {
+    addSystemLog(`👁️ Preview`, `Previewing: ${filename}`);
+    const previewUrl = `http://localhost:3001/api/preview/${filename}`;
+    window.open(previewUrl, '_blank');
+  };
+
   useEffect(() => {
-    checkBackendHealth();
+    checkLangChainHealth();
     resetSession();
     
-    const healthCheckInterval = setInterval(checkBackendHealth, 30000);
+    const healthCheckInterval = setInterval(checkLangChainHealth, 30000);
     
     return () => clearInterval(healthCheckInterval);
   }, []);
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 text-white p-6">
+      {/* 🔥 Enhanced Header with LangChain branding */}
+      <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 text-white p-6">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Bot className="h-8 w-8" />
+            <div className="relative">
+              <Bot className="h-8 w-8" />
+              {isVerifiedForm && (
+                <Verified className="h-4 w-4 absolute -top-1 -right-1 text-green-400" />
+              )}
+            </div>
             <div>
-              <h1 className="text-2xl font-bold">IntelliForm AI V3.0</h1>
-              <p className="opacity-90">Professional PDF Generation & Government Form Assistant</p>
+              <h1 className="text-2xl font-bold flex items-center gap-2">
+                IntelliForm AI V4.0 
+                <span className="text-sm bg-white/20 px-2 py-1 rounded">LangChain</span>
+              </h1>
+              <p className="opacity-90">Verified Government Forms • AI Memory • Strict Validation</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
               <div className="text-sm opacity-90">Current State</div>
-              <div className="font-semibold">{states[sessionState] || sessionState}</div>
+              <div className="font-semibold flex items-center gap-1">
+                {states[sessionState] || sessionState}
+                {isVerifiedForm && <Shield className="h-4 w-4 text-green-400" />}
+              </div>
               {sessionInfo?.progress && (
                 <div className="text-xs opacity-75">Progress: {sessionInfo.progress}</div>
               )}
+              {confidence !== null && (
+                <div className="text-xs opacity-75">Confidence: {Math.round(confidence * 100)}%</div>
+              )}
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs ${
+            <div className={`px-3 py-1 rounded-full text-xs flex items-center gap-1 ${
               sessionState === 'COMPLETE' ? 'bg-green-500' : 
               sessionState === 'COLLECTING' ? 'bg-yellow-500' : 'bg-blue-500'
             }`}>
               {sessionState}
+              {isVerifiedForm && <Verified className="h-3 w-3" />}
             </div>
           </div>
         </div>
@@ -589,28 +471,41 @@ Would you like me to generate the professional PDF form now?`, {
                       : 'bg-gray-100 text-gray-800'
                   }`}>
                     <div className="flex items-start gap-2">
-                      {message.type === 'bot' && <Bot className="h-4 w-4 mt-1 text-blue-600" />}
+                      {message.type === 'bot' && (
+                        <div className="relative">
+                          <Bot className="h-4 w-4 mt-1 text-blue-600" />
+                          {message.metadata?.verified && (
+                            <Verified className="h-3 w-3 absolute -top-1 -right-1 text-green-600" />
+                          )}
+                        </div>
+                      )}
                       {message.type === 'user' && <User className="h-4 w-4 mt-1" />}
-                      <div>
+                      <div className="flex-1">
                         <p className="text-sm whitespace-pre-line">{message.content}</p>
                         
-                        {/* PDF Generation Button */}
+                        {/* PDF Generation Button for verified forms */}
                         {message.metadata?.canGeneratePDF && (
                           <button
-                            onClick={generatePDF}
+                            onClick={generateVerifiedPDF}
                             disabled={isGeneratingPDF}
                             className="mt-2 flex items-center gap-2 px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50"
                           >
-                            <FileText className="h-3 w-3" />
-                            {isGeneratingPDF ? 'Generating PDF...' : 'Generate Professional PDF'}
+                            <div className="flex items-center gap-1">
+                              <FileText className="h-3 w-3" />
+                              <Verified className="h-3 w-3" />
+                            </div>
+                            {isGeneratingPDF ? 'Generating Verified PDF...' : 'Generate Verified PDF'}
                           </button>
                         )}
                         
+                        {/* Confidence indicator */}
                         {message.metadata?.confidence && (
-                          <div className="text-xs opacity-70 mt-1">
-                            Confidence: {Math.round(message.metadata.confidence * 100)}%
+                          <div className="text-xs opacity-70 mt-1 flex items-center gap-1">
+                            <span>Confidence: {Math.round(message.metadata.confidence * 100)}%</span>
+                            {message.metadata.verified && <Verified className="h-3 w-3 text-green-600" />}
                           </div>
                         )}
+                        
                         <p className="text-xs opacity-70 mt-1">
                           {message.timestamp.toLocaleTimeString()}
                         </p>
@@ -630,7 +525,7 @@ Would you like me to generate the professional PDF form now?`, {
                         <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
                         <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                       </div>
-                      <span className="text-sm">AI is thinking...</span>
+                      <span className="text-sm">LangChain AI is thinking...</span>
                     </div>
                   </div>
                 </div>
@@ -639,13 +534,23 @@ Would you like me to generate the professional PDF form now?`, {
 
             {/* Input Area */}
             <div className="border-t p-4">
+              {/* Validation Errors */}
+              {validationErrors.length > 0 && (
+                <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                  <div className="font-medium">Recent validation issues:</div>
+                  {validationErrors.slice(-2).map((error, index) => (
+                    <div key={index} className="text-xs">• {error}</div>
+                  ))}
+                </div>
+              )}
+              
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={currentInput}
                   onChange={(e) => setCurrentInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !isProcessing && processUserInput()}
-                  placeholder="Type your message... (e.g., 'I need a PAN card' or answer the current question)"
+                  placeholder="Type your message... (LangChain will validate and remember context)"
                   className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
                   disabled={isProcessing}
                 />
@@ -664,27 +569,29 @@ Would you like me to generate the professional PDF form now?`, {
         {/* Enhanced System Dashboard */}
         <div className="space-y-6">
           
-          {/* System Status */}
+          {/* LangChain System Status */}
           <div className="bg-white rounded-lg shadow-lg p-4">
             <h3 className="font-semibold mb-3 flex items-center gap-2">
               <Settings className="h-4 w-4" />
-              System Status V3.0
+              LangChain Status V4.0
             </h3>
             <div className="space-y-2 text-sm">
               <div className="flex items-center justify-between">
-                <span>Backend API</span>
-                <span className={`px-2 py-1 rounded-full text-xs ${
+                <span>LangChain API</span>
+                <span className={`px-2 py-1 rounded-full text-xs flex items-center gap-1 ${
                   backendConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {backendConnected ? 'V3.0 Connected' : 'Disconnected'}
+                  {backendConnected ? (
+                    <>V4.0 Connected <Verified className="h-3 w-3" /></>
+                  ) : (
+                    'Disconnected'
+                  )}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span>PDF Engine</span>
-                <span className={`px-2 py-1 rounded-full text-xs ${
-                  backendConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
-                  {backendConnected ? 'Ready' : 'Offline'}
+                <span>Verified Forms</span>
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                  {verifiedForms.length} Forms
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -694,25 +601,24 @@ Would you like me to generate the professional PDF form now?`, {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span>Claude AI</span>
+                <span>Current Form</span>
                 <span className={`px-2 py-1 rounded-full text-xs ${
-                  backendConnected ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                  isVerifiedForm ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                 }`}>
-                  {backendConnected ? 'Session-Aware' : 'Mock'}
+                  {isVerifiedForm ? '✅ Verified' : 'None'}
                 </span>
               </div>
             </div>
             
-            {/* Test Connection Button */}
             <button
-              onClick={testBackendConnection}
-              className="w-full mt-3 px-3 py-2 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+              onClick={testLangChainConnection}
+              className="w-full mt-3 px-3 py-2 bg-purple-600 text-white rounded text-xs hover:bg-purple-700"
             >
-              Test V3.0 Connection
+              Test LangChain Connection
             </button>
           </div>
 
-          {/* Generated Files */}
+          {/* Generated Files with Verification Status */}
           {generatedFiles.length > 0 && (
             <div className="bg-white rounded-lg shadow-lg p-4">
               <h3 className="font-semibold mb-3 flex items-center gap-2">
@@ -723,7 +629,10 @@ Would you like me to generate the professional PDF form now?`, {
                 {generatedFiles.map((file, index) => (
                   <div key={index} className="border rounded-lg p-3 bg-gray-50">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-sm truncate">{file.formName}</span>
+                      <span className="font-medium text-sm truncate flex items-center gap-1">
+                        {file.formName}
+                        {file.verified && <Verified className="h-4 w-4 text-green-600" />}
+                      </span>
                       <span className="text-xs text-gray-500">
                         {new Date(file.generatedAt).toLocaleTimeString()}
                       </span>
@@ -731,6 +640,12 @@ Would you like me to generate the professional PDF form now?`, {
                     <div className="text-xs text-gray-600 mb-2">
                       {file.filename}
                     </div>
+                    {file.verified && (
+                      <div className="text-xs text-green-600 mb-2 flex items-center gap-1">
+                        <Shield className="h-3 w-3" />
+                        Generated from verified government data
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <button
                         onClick={() => downloadFile(file.filename, file.downloadUrl)}
@@ -753,55 +668,18 @@ Would you like me to generate the professional PDF form now?`, {
             </div>
           )}
 
-          {/* Session Info */}
-          {sessionInfo && (
-            <div className="bg-white rounded-lg shadow-lg p-4">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Session Info
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span>Current Form</span>
-                  <span className="text-blue-600 font-medium">
-                    {sessionInfo.currentForm ? governmentForms[sessionInfo.currentForm]?.name || sessionInfo.currentForm : 'None'}
-                  </span>
-                </div>
-                {sessionInfo.progress && (
-                  <div className="flex items-center justify-between">
-                    <span>Progress</span>
-                    <span className="text-green-600 font-medium">{sessionInfo.progress}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span>State</span>
-                  <span className="text-purple-600 font-medium">{sessionInfo.state}</span>
-                </div>
-                {sessionState === 'COMPLETE' && (
-                  <div className="mt-2 p-2 bg-green-50 rounded">
-                    <div className="flex items-center gap-1 text-green-700 text-xs">
-                      <CheckCircle className="h-3 w-3" />
-                      Form ready for PDF generation
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Available Forms */}
+          {/* Verified Forms List */}
           <div className="bg-white rounded-lg shadow-lg p-4">
             <h3 className="font-semibold mb-3 flex items-center gap-2">
               <Database className="h-4 w-4" />
-              Available Forms
+              Verified Forms
             </h3>
             <div className="space-y-2 text-sm">
-              {Object.entries(governmentForms).map(([key, form]) => (
-                <div key={key} className="flex items-center gap-2">
-                  <FileText className="h-3 w-3 text-gray-400" />
-                  <span className="truncate">{form.name}</span>
-                  <span className="text-xs text-gray-500">({form.fields.length} fields)</span>
-                  <span className="text-xs bg-green-100 text-green-700 px-1 rounded">PDF</span>
+              {verifiedForms.map((form, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Verified className="h-3 w-3 text-green-600" />
+                  <span className="truncate">{form.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                  <span className="text-xs bg-green-100 text-green-700 px-1 rounded">Verified</span>
                 </div>
               ))}
             </div>
@@ -830,12 +708,13 @@ Would you like me to generate the professional PDF form now?`, {
             <div className="space-y-2">
               {sessionState === 'COMPLETE' && (
                 <button
-                  onClick={generatePDF}
+                  onClick={generateVerifiedPDF}
                   disabled={isGeneratingPDF}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
                 >
                   <FileText className="h-4 w-4" />
-                  {isGeneratingPDF ? 'Generating...' : 'Generate PDF'}
+                  <Verified className="h-4 w-4" />
+                  {isGeneratingPDF ? 'Generating...' : 'Generate Verified PDF'}
                 </button>
               )}
               
@@ -843,7 +722,7 @@ Would you like me to generate the professional PDF form now?`, {
                 onClick={resetSession}
                 className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
               >
-                Reset Session
+                Reset LangChain Session
               </button>
             </div>
           </div>
@@ -853,4 +732,4 @@ Would you like me to generate the professional PDF form now?`, {
   );
 };
 
-export default IntelliFormMVP;
+export default LangChainIntelliForm;
